@@ -3,10 +3,22 @@ import { Mastra } from '@mastra/core/mastra';
 import { LibSQLStore } from '@mastra/libsql';
 import { PinoLogger } from '@mastra/loggers';
 import { Agent } from '@mastra/core/agent';
+import { Memory } from '@mastra/memory';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { Memory } from '@mastra/memory';
 import { createStep, createWorkflow } from '@mastra/core/workflows';
+
+"use strict";
+const agentStorage = new LibSQLStore({
+  id: "routing-agent-memory",
+  url: "file:./mastra.db"
+});
+const memory = new Memory({
+  storage: agentStorage,
+  options: {
+    generateTitle: true
+  }
+});
 
 "use strict";
 const destinationsSearchTool = createTool({
@@ -19,14 +31,16 @@ const destinationsSearchTool = createTool({
   }),
   outputSchema: z.object({
     query: z.string(),
-    destinations: z.array(z.object({
-      city: z.string(),
-      country: z.string(),
-      description: z.string(),
-      highlights: z.array(z.string()),
-      bestTimeToVisit: z.string(),
-      travelType: z.array(z.string())
-    }))
+    destinations: z.array(
+      z.object({
+        city: z.string(),
+        country: z.string(),
+        description: z.string(),
+        highlights: z.array(z.string()),
+        bestTimeToVisit: z.string(),
+        travelType: z.array(z.string())
+      })
+    )
   }),
   execute: async ({ query }) => {
     return await searchDestinations(query);
@@ -40,7 +54,13 @@ async function searchDestinations(query) {
       city: "Barcelona",
       country: "Spain",
       description: "Vibrant city with Gaud\xED modernist architecture, Mediterranean beaches, and rich nightlife.",
-      highlights: ["Sagrada Familia", "Park G\xFCell", "Las Ramblas", "Gothic Quarter", "Barceloneta Beach"],
+      highlights: [
+        "Sagrada Familia",
+        "Park G\xFCell",
+        "Las Ramblas",
+        "Gothic Quarter",
+        "Barceloneta Beach"
+      ],
       bestTimeToVisit: "May to June, September to October",
       travelType: ["beach", "culture", "gastronomy", "nightlife", "architecture"]
     },
@@ -89,7 +109,13 @@ async function searchDestinations(query) {
       city: "Bali",
       country: "Indonesia",
       description: "Paradise island with Hindu temples, rice terraces, beaches, and wellness retreats.",
-      highlights: ["Ubud", "Tanah Lot Temple", "Tegallalang Rice Terraces", "Seminyak", "Mount Batur"],
+      highlights: [
+        "Ubud",
+        "Tanah Lot Temple",
+        "Tegallalang Rice Terraces",
+        "Seminyak",
+        "Mount Batur"
+      ],
       bestTimeToVisit: "April to October (dry season)",
       travelType: ["beach", "wellness", "yoga", "nature", "spiritual", "budget"]
     },
@@ -106,7 +132,13 @@ async function searchDestinations(query) {
       city: "New York",
       country: "United States",
       description: "The city that never sleeps: iconic skyscrapers, Broadway, art, and cultural diversity.",
-      highlights: ["Times Square", "Central Park", "Statue of Liberty", "Empire State", "Brooklyn Bridge"],
+      highlights: [
+        "Times Square",
+        "Central Park",
+        "Statue of Liberty",
+        "Empire State",
+        "Brooklyn Bridge"
+      ],
       bestTimeToVisit: "April to June, September to November",
       travelType: ["urban", "culture", "art", "shopping", "gastronomy", "museums"]
     },
@@ -130,7 +162,13 @@ async function searchDestinations(query) {
       city: "Cusco",
       country: "Peru",
       description: "Ancient Inca capital, gateway to Machu Picchu and heart of Andean culture.",
-      highlights: ["Machu Picchu", "Sacred Valley", "Plaza de Armas", "Sacsayhuaman", "San Pedro Market"],
+      highlights: [
+        "Machu Picchu",
+        "Sacred Valley",
+        "Plaza de Armas",
+        "Sacsayhuaman",
+        "San Pedro Market"
+      ],
       bestTimeToVisit: "May to September (dry season)",
       travelType: ["history", "adventure", "trekking", "culture", "archaeology"]
     },
@@ -139,7 +177,13 @@ async function searchDestinations(query) {
       city: "Sydney",
       country: "Australia",
       description: "Coastal city with the iconic Opera House, surf beaches, and relaxed lifestyle.",
-      highlights: ["Sydney Opera House", "Harbour Bridge", "Bondi Beach", "The Rocks", "Taronga Zoo"],
+      highlights: [
+        "Sydney Opera House",
+        "Harbour Bridge",
+        "Bondi Beach",
+        "The Rocks",
+        "Taronga Zoo"
+      ],
       bestTimeToVisit: "September to November, March to May",
       travelType: ["beach", "urban", "surf", "nature", "modern"]
     },
@@ -156,7 +200,13 @@ async function searchDestinations(query) {
       city: "Cape Town",
       country: "South Africa",
       description: "Spectacular city between mountains and ocean, with vineyards and African wildlife.",
-      highlights: ["Table Mountain", "Cape of Good Hope", "Robben Island", "V&A Waterfront", "Vineyards"],
+      highlights: [
+        "Table Mountain",
+        "Cape of Good Hope",
+        "Robben Island",
+        "V&A Waterfront",
+        "Vineyards"
+      ],
       bestTimeToVisit: "November to March",
       travelType: ["nature", "adventure", "wine", "safari", "beach"]
     }
@@ -164,9 +214,7 @@ async function searchDestinations(query) {
   const matchedDestinations = allDestinations.filter((dest) => {
     const searchText = `${dest.city} ${dest.country} ${dest.description} ${dest.highlights.join(" ")} ${dest.travelType.join(" ")}`.toLowerCase();
     const keywords = lowerQuery.split(/\s+/);
-    return keywords.some(
-      (keyword) => keyword.length > 2 && searchText.includes(keyword)
-    );
+    return keywords.some((keyword) => keyword.length > 2 && searchText.includes(keyword));
   });
   const results = matchedDestinations.length > 0 ? matchedDestinations.slice(0, 5) : getDefaultDestinations(lowerQuery, allDestinations);
   return {
@@ -191,7 +239,9 @@ function getDefaultDestinations(query, allDestinations) {
     return allDestinations.filter((d) => d.travelType.includes("budget")).slice(0, 4);
   }
   if (query.includes("europe")) {
-    return allDestinations.filter((d) => ["Spain", "France", "Italy", "Netherlands", "Czech Republic"].includes(d.country)).slice(0, 4);
+    return allDestinations.filter(
+      (d) => ["Spain", "France", "Italy", "Netherlands", "Czech Republic"].includes(d.country)
+    ).slice(0, 4);
   }
   if (query.includes("asia")) {
     return allDestinations.filter((d) => ["Japan", "Indonesia", "Thailand"].includes(d.country)).slice(0, 4);
@@ -242,7 +292,8 @@ const destinationsAgent = new Agent({
       to make a better decision.
 `,
   model: "google/gemini-2.5-flash",
-  tools: { destinationsSearchTool }
+  tools: { destinationsSearchTool },
+  memory
 });
 
 "use strict";
@@ -343,14 +394,10 @@ const weatherAgent = new Agent({
 `,
   model: "google/gemini-2.5-flash",
   tools: { weatherTool },
-  memory: new Memory()
+  memory
 });
 
 "use strict";
-const agentStorage = new LibSQLStore({
-  id: "routing-agent-memory",
-  url: "file:./mastra.db"
-});
 const routingAgent = new Agent({
   id: "routing-agent",
   name: "Travel Assistant",
@@ -398,9 +445,7 @@ const routingAgent = new Agent({
     weatherAgent,
     destinationsAgent
   },
-  memory: new Memory({
-    storage: agentStorage
-  })
+  memory
 });
 
 "use strict";

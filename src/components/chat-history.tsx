@@ -1,24 +1,13 @@
-import { useMastraClient } from "@mastra/react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { es } from "date-fns/locale";
-import {
-	HistoryIcon,
-	MessageSquareIcon,
-	PlusIcon,
-	Trash2Icon,
-} from "lucide-react";
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-	Sheet,
-	SheetContent,
-	SheetHeader,
-	SheetTitle,
-	SheetTrigger,
-} from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { useMastraClient } from '@mastra/react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { HistoryIcon, MessageSquareIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 interface ChatHistoryProps {
 	resourceId: string;
@@ -41,7 +30,7 @@ export function ChatHistory({
 
 	// Verificar si la memoria está habilitada
 	const { data: memoryStatus } = useQuery({
-		queryKey: ["memory", agentId],
+		queryKey: ['memory', agentId],
 		queryFn: () => client.getMemoryStatus(agentId),
 		staleTime: 5 * 60 * 1000,
 		retry: false,
@@ -51,7 +40,7 @@ export function ChatHistory({
 
 	// Obtener threads
 	const { data: threads, isLoading } = useQuery({
-		queryKey: ["memory", "threads", resourceId, agentId],
+		queryKey: ['memory', 'threads', resourceId, agentId],
 		queryFn: async () => {
 			const result = await client.listMemoryThreads({ resourceId, agentId });
 			return result.threads;
@@ -69,7 +58,7 @@ export function ChatHistory({
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({
-				queryKey: ["memory", "threads", resourceId, agentId],
+				queryKey: ['memory', 'threads', resourceId, agentId],
 			});
 		},
 	});
@@ -107,11 +96,7 @@ export function ChatHistory({
 				</SheetHeader>
 
 				<div className="p-4">
-					<Button
-						variant="outline"
-						className="w-full justify-start"
-						onClick={handleNewChat}
-					>
+					<Button variant="outline" className="w-full justify-start" onClick={handleNewChat}>
 						<PlusIcon className="mr-2 size-4" />
 						New Chat
 					</Button>
@@ -120,9 +105,7 @@ export function ChatHistory({
 				<ScrollArea className="h-[calc(100vh-140px)]">
 					<div className="flex flex-col gap-1 p-4 pt-0">
 						{isLoading ? (
-							<div className="py-8 text-center text-sm text-muted-foreground">
-								Loading...
-							</div>
+							<div className="py-8 text-center text-sm text-muted-foreground">Loading...</div>
 						) : threads && threads.length > 0 ? (
 							threads.map((thread) => (
 								<button
@@ -130,23 +113,21 @@ export function ChatHistory({
 									type="button"
 									onClick={() => handleSelectThread(thread.id)}
 									className={cn(
-										"group flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
-										currentThreadId === thread.id && "bg-muted",
+										'group flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
+										currentThreadId === thread.id && 'bg-muted'
 									)}
 								>
 									<div className="flex min-w-0 flex-1 items-center gap-2">
 										<MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
 										<div className="min-w-0 flex-1">
-											<p className="truncate font-medium">
-												{thread.title || "Untitled"}
-											</p>
+											<p className="truncate font-medium">{thread.title || 'Untitled'}</p>
 											<p className="text-xs text-muted-foreground">
 												{thread.createdAt
 													? formatDistanceToNow(new Date(thread.createdAt), {
 															addSuffix: true,
 															locale: es,
 														})
-													: ""}
+													: ''}
 											</p>
 										</div>
 									</div>

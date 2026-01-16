@@ -43,6 +43,10 @@ export function filterDisplayableMessages(
 			if (part.type === "data-network") {
 				return true;
 			}
+			// Dynamic tool parts (from resolved network messages)
+			if (part.type === "dynamic-tool") {
+				return true;
+			}
 			// Reasoning/thinking - now displayable
 			if (part.type === "reasoning") {
 				return true;

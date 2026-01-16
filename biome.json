@@ -16,21 +16,71 @@
 			"!**/src/styles.css"
 		]
 	},
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on",
+				"recommended": true,
+				"useSortedAttributes": "on",
+				"useSortedProperties": "on"
+			}
+		},
+		"enabled": true
+	},
 	"formatter": {
 		"enabled": true,
-		"indentStyle": "tab"
-	},
-	"assist": { "actions": { "source": { "organizeImports": "on" } } },
-	"linter": {
-		"enabled": true,
-		"rules": {
-			"recommended": true
-		}
+		"formatWithErrors": false,
+		"includes": ["**/src/**/*.ts", "**/src/**/*.tsx"],
+		"indentStyle": "tab",
+		"indentWidth": 2,
+		"lineWidth": 100
 	},
 	"javascript": {
 		"formatter": {
-			"quoteStyle": "double"
+			"indentStyle": "tab",
+			"indentWidth": 2,
+			"quoteStyle": "single",
+			"semicolons": "always",
+			"trailingCommas": "es5"
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"a11y": {
+				"noSvgWithoutTitle": "off",
+				"useAnchorContent": "off",
+				"noRedundantAlt": "off",
+				"noLabelWithoutControl": "off",
+				"useFocusableInteractive": "off",
+				"useSemanticElements": "off",
+				"recommended": true
+			},
+			"complexity": {
+				"recommended": true
+			},
+			"correctness": {
+				"noUnusedVariables": "error",
+				"useExhaustiveDependencies": "off"
+			},
+			"performance": {
+				"noImgElement": "off",
+				"recommended": true
+			},
+			"recommended": true,
+			"security": {
+				"noDangerouslySetInnerHtml": "off",
+				"recommended": true
+			},
+			"style": {
+				"useConst": "error",
+				"useImportType": "on",
+				"noNonNullAssertion": "off"
+			},
+			"suspicious": {
+				"noArrayIndexKey": "off",
+				"noExplicitAny": "off"
+			}
 		}
 	}
 }
-

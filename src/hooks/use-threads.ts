@@ -1,28 +1,12 @@
-import { useMastraClient } from "@mastra/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { threadsQueryOptions } from '@/lib/mastra-queries';
 
-export const useThreads = ({
-  resourceId,
-  agentId,
-  isMemoryEnabled,
-}: {
-  resourceId: string;
-  agentId: string;
-  isMemoryEnabled: boolean;
-}) => {
-  const client = useMastraClient();
-
-  return useQuery({
-    queryKey: ["memory", "threads", resourceId, agentId],
-    queryFn: async () => {
-      if (!isMemoryEnabled) return null;
-      const result = await client.listMemoryThreads({ resourceId, agentId });
-      return result.threads;
-    },
-    enabled: Boolean(isMemoryEnabled),
-    staleTime: 0,
-    gcTime: 0,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
+/**
+ * Hook para listar threads/conversaciones
+ * Usa useSuspenseQuery para garantizar que los datos estén disponibles
+ * Debe usarse con un loader que precargue los datos
+ * @returns Query con lista de threads
+ */
+export const useThreads = () => {
+	return useSuspenseQuery(threadsQueryOptions());
 };

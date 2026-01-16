@@ -1,28 +1,27 @@
-import { useChat } from "@ai-sdk/react";
-import type { NetworkDataPart } from "@mastra/ai-sdk";
-import { toAISdkV5Messages } from "@mastra/ai-sdk/ui";
-import { useMastraClient } from "@mastra/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import type { ToolUIPart } from "ai";
-import { DefaultChatTransport } from "ai";
-import { CopyIcon, GlobeIcon, PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { v4 as uuidv4 } from "uuid";
+import { useChat } from '@ai-sdk/react';
+import type { NetworkDataPart } from '@mastra/ai-sdk';
+import { useQueryClient } from '@tanstack/react-query';
+import { createFileRoute, redirect, useNavigate, useRouterState } from '@tanstack/react-router';
+import type { ToolUIPart } from 'ai';
+import { DefaultChatTransport } from 'ai';
+import { CopyIcon, GlobeIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
 import {
 	Conversation,
 	ConversationContent,
 	ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import { Loader } from "@/components/ai-elements/loader";
+} from '@/components/ai-elements/conversation';
+import { Loader } from '@/components/ai-elements/loader';
 import {
 	Message,
 	MessageAction,
 	MessageActions,
 	MessageContent,
 	MessageResponse,
-} from "@/components/ai-elements/message";
-import { NetworkExecution } from "@/components/ai-elements/network-execution";
+} from '@/components/ai-elements/message';
+import { NetworkExecution } from '@/components/ai-elements/network-execution';
 import {
 	PromptInput,
 	PromptInputActionAddAttachments,
@@ -35,92 +34,128 @@ import {
 	PromptInputSubmit,
 	PromptInputTextarea,
 	PromptInputTools,
-} from "@/components/ai-elements/prompt-input";
-import {
-	Reasoning,
-	ReasoningContent,
-	ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
+} from '@/components/ai-elements/prompt-input';
+import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
 import {
 	Tool,
 	ToolContent,
 	ToolHeader,
 	ToolInput,
 	ToolOutput,
-} from "@/components/ai-elements/tool";
-import { ChatHistory } from "@/components/chat-history";
-import { Button } from "@/components/ui/button";
-import { MASTRA_BASE_URL } from "@/lib/constants";
-import { filterDisplayableMessages } from "@/lib/filter-displayable-messages";
+} from '@/components/ai-elements/tool';
+import { MASTRA_BASE_URL, RESOURCE_ID } from '@/lib/constants';
+import { threadMessagesQueryOptions, threadsQueryOptions } from '@/lib/mastra-queries';
 
-const AGENT_ID = "routing-agent";
-const RESOURCE_ID = "Travel Assistant"; // Mastra uses the agent name as resourceId by default
-export const Route = createFileRoute("/chat/$threadId")({
+const chatSearchSchema = z.object({
+	new: z.boolean().optional(),
+});
+
+export const Route = createFileRoute('/chat/$threadId')({
+	validateSearch: chatSearchSchema,
+	loaderDeps: ({ search }) => ({ isNew: search.new }),
+	loader: async ({ params, context, deps }) => {
+		const { threadId } = params;
+		const isNewChat = deps.isNew === true;
+
+		// Si es un chat nuevo, no validar existencia (el thread se creará al enviar el primer mensaje)
+		if (isNewChat) {
+			return {
+				// biome-ignore lint/suspicious/noExplicitAny: Empty messages array for new chat
+				initialMessages: [] as any,
+				threadExists: true, // Consideramos que "existe" para evitar redirección
+			};
+		}
+
+		// Prefetch mensajes del thread usando query options
+		// Usamos ensureQueryData porque necesitamos los datos para el componente
+		const data = await context.queryClient.ensureQueryData(threadMessagesQueryOptions(threadId));
+
+		// Si el thread no existe, redirigir a home
+		if (!data.exists) {
+			throw redirect({ to: '/' });
+		}
+
+		return {
+			// biome-ignore lint/suspicious/noExplicitAny: AppUIMessage type is compatible at runtime
+			initialMessages: data.messages as any,
+			threadExists: data.exists,
+		};
+	},
 	component: ChatPage,
 });
 
 function ChatPage() {
 	const { threadId } = Route.useParams();
-	const navigate = useNavigate();
-	const [inputValue, setInputValue] = useState("");
-	const client = useMastraClient();
+	const { new: isNewChat } = Route.useSearch();
+	const loaderData = Route.useLoaderData();
+	const initialMessages = loaderData.initialMessages;
+	const routerState = useRouterState();
+	const [inputValue, setInputValue] = useState('');
 	const queryClient = useQueryClient();
+	const initialMessageSentRef = useRef(false);
+	const navigate = useNavigate();
 
-	// Load existing thread messages
-	const { data: existingMessages, isLoading: isLoadingMessages } = useQuery({
-		queryKey: ["memory", "messages", threadId, AGENT_ID],
-		queryFn: async () => {
-			try {
-				const result = await client.listThreadMessages(threadId, {
-					agentId: AGENT_ID,
-				});
-				return result.messages || [];
-			} catch {
-				// Thread doesn't exist yet, it's new
-				return [];
-			}
-		},
-		staleTime: 0,
-		retry: false,
-	});
+	// Obtener el mensaje inicial del estado de navegación
+	const initialMessage = (routerState.location.state as { initialMessage?: string })
+		?.initialMessage;
 
-	const { messages, sendMessage, status, setMessages } = useChat({
+	const { messages, sendMessage, status } = useChat({
 		id: threadId,
-		// @ts-expect-error experimental_generateId is not in stable types yet
-		experimental_generateId: () => uuidv4(), // Generate UUIDs for message IDs
+		messages: initialMessages,
+		generateId: () => uuidv4(),
 		transport: new DefaultChatTransport({
 			api: `${MASTRA_BASE_URL}/chat`,
-			body: {
-				threadId,
-				resourceId: RESOURCE_ID,
+			prepareSendMessagesRequest({ messages, id }) {
+				const body = {
+					id,
+					messages: messages.length > 0 ? [messages[messages.length - 1]] : [],
+					memory: {
+						thread: threadId,
+						resource: RESOURCE_ID,
+					},
+				};
+
+				return {
+					body,
+				};
 			},
 		}),
 	});
 
-	// Load existing messages when thread changes
+	// Enviar mensaje inicial si viene del estado de navegación
 	useEffect(() => {
-		if (
-			existingMessages &&
-			existingMessages.length > 0 &&
-			messages.length === 0
-		) {
-			const uiMessages = toAISdkV5Messages(existingMessages);
-			const displayableMessages = filterDisplayableMessages(uiMessages);
-			setMessages(displayableMessages);
+		if (isNewChat && initialMessage && !initialMessageSentRef.current && status !== 'streaming') {
+			initialMessageSentRef.current = true;
+			sendMessage({ text: initialMessage });
+
+			// Limpiar el param ?new de la URL
+			navigate({
+				to: '/chat/$threadId',
+				params: { threadId },
+				search: {}, // Sin el param new
+				replace: true,
+			});
+
+			// Invalidar threads después de enviar mensaje
+			setTimeout(() => {
+				queryClient.invalidateQueries({
+					queryKey: threadsQueryOptions().queryKey,
+				});
+			}, 1000);
 		}
-	}, [existingMessages, messages.length, setMessages]);
+	}, [isNewChat, initialMessage, status, sendMessage, navigate, threadId, queryClient]);
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!inputValue.trim() || status === "streaming") return;
+		if (!inputValue.trim() || status === 'streaming') return;
 
 		sendMessage({ text: inputValue });
-		setInputValue("");
+		setInputValue('');
 
 		// Invalidate threads after sending message
 		setTimeout(() => {
 			queryClient.invalidateQueries({
-				queryKey: ["memory", "threads", RESOURCE_ID, AGENT_ID],
+				queryKey: threadsQueryOptions().queryKey,
 			});
 		}, 1000);
 	};
@@ -129,47 +164,28 @@ function ChatPage() {
 		navigator.clipboard.writeText(text);
 	};
 
-	const handleNewChat = useCallback(() => {
-		navigate({ to: "/" });
-	}, [navigate]);
-
-	const handleSelectThread = useCallback(
-		(selectedThreadId: string) => {
-			navigate({
-				to: "/chat/$threadId",
-				params: { threadId: selectedThreadId },
-			});
-		},
-		[navigate],
-	);
-
 	// Get text content from message parts for copying
 	const getMessageText = (message: (typeof messages)[0]) => {
 		return message.parts
-			.filter(
-				(part): part is { type: "text"; text: string } => part.type === "text",
-			)
+			.filter((part): part is { type: 'text'; text: string } => part.type === 'text')
 			.map((part) => part.text)
-			.join("");
+			.join('');
 	};
 
 	// Render a single message part based on its type
-	const renderPart = (
-		part: (typeof messages)[0]["parts"][0],
-		partIndex: number,
-	) => {
+	const renderPart = (part: (typeof messages)[0]['parts'][0], partIndex: number) => {
 		// Text content
-		if (part.type === "text" && "text" in part) {
+		if (part.type === 'text' && 'text' in part) {
 			const text = part.text as string;
-			if (!text || text.trim() === "") return null;
+			if (!text || text.trim() === '') return null;
 			return <MessageResponse key={partIndex}>{text}</MessageResponse>;
 		}
 
 		// Reasoning/thinking content
-		if (part.type === "reasoning" && "text" in part) {
+		if (part.type === 'reasoning' && 'text' in part) {
 			const text = part.text as string;
 			return (
-				<Reasoning key={partIndex} isStreaming={status === "streaming"}>
+				<Reasoning isStreaming={status === 'streaming'} key={partIndex}>
 					<ReasoningTrigger />
 					<ReasoningContent>{text}</ReasoningContent>
 				</Reasoning>
@@ -177,26 +193,76 @@ function ChatPage() {
 		}
 
 		// Network execution (agent networks)
-		if (part.type === "data-network" && "data" in part) {
+		if (part.type === 'data-network' && 'data' in part) {
 			const networkPart = part as NetworkDataPart;
 			return (
 				<NetworkExecution
-					key={partIndex}
 					data={networkPart.data}
-					isStreaming={status === "streaming"}
+					isStreaming={status === 'streaming'}
+					key={partIndex}
 				/>
 			);
 		}
 
+		// Dynamic tool (network execution results from memory)
+		if (part.type === 'dynamic-tool' && 'output' in part) {
+			const dynamicPart = part as {
+				type: 'dynamic-tool';
+				toolCallId: string;
+				toolName: string;
+				state: string;
+				input: unknown;
+				output: {
+					childMessages?: Array<{
+						type: 'tool' | 'text';
+						toolCallId?: string;
+						toolName?: string;
+						args?: Record<string, unknown>;
+						toolOutput?: Record<string, unknown>;
+						content?: string;
+					}>;
+					result?: string;
+				};
+			};
+
+			return (
+				<div className="space-y-2" key={partIndex}>
+					{dynamicPart.output?.childMessages?.map((child, childIndex) => {
+						if (child.type === 'tool') {
+							return (
+								<Tool key={childIndex}>
+									<ToolHeader
+										state="output-available"
+										title={child.toolName || 'Tool'}
+										type={`tool-${child.toolName}`}
+									/>
+									<ToolContent>
+										{child.args && <ToolInput input={child.args} />}
+										{child.toolOutput && (
+											<ToolOutput errorText={undefined} output={child.toolOutput} />
+										)}
+									</ToolContent>
+								</Tool>
+							);
+						}
+						if (child.type === 'text' && child.content) {
+							return <MessageResponse key={childIndex}>{child.content}</MessageResponse>;
+						}
+						return null;
+					})}
+				</div>
+			);
+		}
+
 		// Tool calls (tool-{toolKey})
-		if (part.type.startsWith("tool-")) {
+		if (part.type.startsWith('tool-')) {
 			const toolPart = part as ToolUIPart;
 			return (
 				<Tool key={partIndex}>
 					<ToolHeader
-						title={toolPart.type.replace("tool-", "")}
-						type={toolPart.type}
 						state={toolPart.state}
+						title={toolPart.type.replace('tool-', '')}
+						type={toolPart.type}
 					/>
 					<ToolContent>
 						{toolPart.input !== undefined && toolPart.input !== null && (
@@ -206,8 +272,8 @@ function ChatPage() {
 						{(toolPart.output || toolPart.errorText) && (
 							<ToolOutput
 								// biome-ignore lint/suspicious/noExplicitAny: ToolUIPart type compatibility
-								output={toolPart.output as any}
 								errorText={toolPart.errorText}
+								output={toolPart.output as any}
 							/>
 						)}
 					</ToolContent>
@@ -218,39 +284,14 @@ function ChatPage() {
 		return null;
 	};
 
-	if (isLoadingMessages) {
-		return (
-			<div className="flex h-[calc(100vh-72px)] items-center justify-center">
-				<Loader size={24} />
-			</div>
-		);
-	}
-
 	return (
-		<div className="relative flex h-[calc(100vh-72px)] w-full flex-col overflow-hidden">
+		<div className="relative flex h-full w-full flex-col overflow-hidden">
 			<div className="mx-auto flex size-full max-w-4xl flex-col p-6">
-				{/* Header with new chat button and history */}
-				<div className="mb-4 flex items-center justify-between">
-					<ChatHistory
-						resourceId={RESOURCE_ID}
-						agentId={AGENT_ID}
-						currentThreadId={threadId}
-						onSelectThread={handleSelectThread}
-						onNewChat={handleNewChat}
-					/>
-					<Button variant="outline" size="sm" onClick={handleNewChat}>
-						<PlusIcon className="mr-2 size-4" />
-						New Chat
-					</Button>
-				</div>
-
 				<Conversation className="flex-1">
 					<ConversationContent>
 						{messages.length === 0 ? (
 							<div className="flex size-full flex-col items-center justify-center gap-4 text-center">
-								<h2 className="text-2xl font-semibold text-foreground">
-									Travel Assistant
-								</h2>
+								<h2 className="text-2xl font-semibold text-foreground">Travel Assistant</h2>
 								<p className="text-muted-foreground">
 									Ask me about destinations, weather, and travel recommendations
 								</p>
@@ -259,33 +300,32 @@ function ChatPage() {
 							messages.map((message, index) => {
 								// Check if message has any renderable content
 								const hasContent = message.parts.some((part) => {
-									if (part.type === "text" && "text" in part) {
+									if (part.type === 'text' && 'text' in part) {
 										const text = part.text as string;
-										return text && text.trim() !== "";
+										return text && text.trim() !== '';
 									}
 									return (
-										part.type === "reasoning" ||
-										part.type === "data-network" ||
-										part.type.startsWith("tool-")
+										part.type === 'reasoning' ||
+										part.type === 'data-network' ||
+										part.type === 'dynamic-tool' ||
+										part.type.startsWith('tool-')
 									);
 								});
 
 								if (!hasContent) return null;
 
 								return (
-									<Message key={message.id} from={message.role}>
+									<Message from={message.role} key={message.id}>
 										<MessageContent>
-											{message.parts.map((part, partIndex) =>
-												renderPart(part, partIndex),
-											)}
+											{message.parts.map((part, partIndex) => renderPart(part, partIndex))}
 										</MessageContent>
-										{message.role === "assistant" &&
-											status === "ready" &&
+										{message.role === 'assistant' &&
+											status === 'ready' &&
 											index === messages.length - 1 && (
 												<MessageActions>
 													<MessageAction
-														tooltip="Copy"
 														onClick={() => handleCopy(getMessageText(message))}
+														tooltip="Copy"
 													>
 														<CopyIcon className="size-3" />
 													</MessageAction>
@@ -295,7 +335,7 @@ function ChatPage() {
 								);
 							})
 						)}
-						{status === "streaming" && (
+						{status === 'streaming' && (
 							<div className="flex items-center gap-2 text-sm text-muted-foreground">
 								<Loader size={14} />
 								<span>Thinking...</span>
@@ -310,15 +350,15 @@ function ChatPage() {
 						<PromptInput onSubmit={() => {}}>
 							<PromptInputBody>
 								<PromptInputTextarea
-									value={inputValue}
 									onChange={(e) => setInputValue(e.target.value)}
-									placeholder="Ask about travel destinations..."
 									onKeyDown={(e) => {
-										if (e.key === "Enter" && !e.shiftKey) {
+										if (e.key === 'Enter' && !e.shiftKey) {
 											e.preventDefault();
 											handleSubmit(e);
 										}
 									}}
+									placeholder="Ask about travel destinations..."
+									value={inputValue}
 								/>
 							</PromptInputBody>
 							<PromptInputFooter>
@@ -335,7 +375,7 @@ function ChatPage() {
 									</PromptInputButton>
 								</PromptInputTools>
 								<PromptInputSubmit
-									disabled={!inputValue.trim() || status === "streaming"}
+									disabled={!inputValue.trim() || status === 'streaming'}
 									status={status}
 								/>
 							</PromptInputFooter>

@@ -4,9 +4,9 @@ import { Mastra } from '@mastra/core/mastra';
 import { LibSQLStore } from '@mastra/libsql';
 import { PinoLogger } from '@mastra/loggers';
 import { Agent, isSupportedLanguageModel, tryGenerateWithJsonFallback, tryStreamWithJsonFallback, MessageList } from '@mastra/core/agent';
-import { destinationsSearchTool } from './tools/52e9b9e3-e868-434a-ad68-4284f51ecd02.mjs';
 import { Memory as Memory$1 } from '@mastra/memory';
-import { weatherTool } from './tools/187a934b-bfe9-4298-b3e6-5f8bce6524ec.mjs';
+import { destinationsSearchTool } from './tools/6ecb91c3-c2fa-4043-8480-f1e4d4dcc90a.mjs';
+import { weatherTool } from './tools/4806ea0e-78dc-4be1-a182-f975ae9b4715.mjs';
 import { createWorkflow, createStep } from '@mastra/core/workflows';
 import z$1, { z, ZodObject, ZodFirstPartyTypeKind } from 'zod';
 import { readdir, readFile, mkdtemp, rm, writeFile, mkdir, copyFile, stat } from 'fs/promises';
@@ -39,6 +39,17 @@ import { RequestContext } from '@mastra/core/request-context';
 import { MastraServerBase } from '@mastra/core/server';
 import { Buffer as Buffer$1 } from 'buffer';
 import { tools } from './tools.mjs';
+
+const agentStorage = new LibSQLStore({
+  id: "routing-agent-memory",
+  url: "file:./mastra.db"
+});
+const memory = new Memory$1({
+  storage: agentStorage,
+  options: {
+    generateTitle: true
+  }
+});
 
 const destinationsAgent = new Agent({
   id: "destinations-agent",
@@ -74,7 +85,8 @@ const destinationsAgent = new Agent({
       to make a better decision.
 `,
   model: "google/gemini-2.5-flash",
-  tools: { destinationsSearchTool }
+  tools: { destinationsSearchTool },
+  memory
 });
 
 const weatherAgent = new Agent({
@@ -99,13 +111,9 @@ const weatherAgent = new Agent({
 `,
   model: "google/gemini-2.5-flash",
   tools: { weatherTool },
-  memory: new Memory$1()
+  memory
 });
 
-const agentStorage = new LibSQLStore({
-  id: "routing-agent-memory",
-  url: "file:./mastra.db"
-});
 const routingAgent = new Agent({
   id: "routing-agent",
   name: "Travel Assistant",
@@ -153,9 +161,7 @@ const routingAgent = new Agent({
     weatherAgent,
     destinationsAgent
   },
-  memory: new Memory$1({
-    storage: agentStorage
-  })
+  memory
 });
 
 const forecastSchema = z.object({
@@ -1360,11 +1366,6 @@ var agentExecutionBodySchema$1 = z$1.object({
   context: z$1.array(coreMessageSchema).optional(),
   // Memory & Persistence
   memory: agentMemoryOptionSchema.optional(),
-  resourceId: z$1.string().optional(),
-  // @deprecated
-  resourceid: z$1.string().optional(),
-  threadId: z$1.string().optional(),
-  // @deprecated
   runId: z$1.string().optional(),
   savePerStep: z$1.boolean().optional(),
   // Request Context (handler-specific field - merged with server's requestContext)
@@ -1412,6 +1413,12 @@ var agentExecutionBodySchema$1 = z$1.object({
     fallbackValue: z$1.any().optional()
   }).optional()
 }).passthrough();
+var agentExecutionLegacyBodySchema = agentExecutionBodySchema$1.extend({
+  resourceId: z$1.string().optional(),
+  resourceid: z$1.string().optional(),
+  // lowercase variant
+  threadId: z$1.string().optional()
+});
 var executeToolDataBodySchema = z$1.object({
   data: z$1.custom((x) => x !== void 0, { message: "data is required" })
 });
@@ -1433,8 +1440,15 @@ var toolCallActionBodySchema = z$1.object({
   toolCallId: z$1.string(),
   format: z$1.string().optional()
 });
+var networkToolCallActionBodySchema = z$1.object({
+  runId: z$1.string(),
+  requestContext: z$1.record(z$1.string(), z$1.any()).optional(),
+  format: z$1.string().optional()
+});
 var approveToolCallBodySchema = toolCallActionBodySchema;
 var declineToolCallBodySchema = toolCallActionBodySchema;
+var approveNetworkToolCallBodySchema = networkToolCallActionBodySchema;
+var declineNetworkToolCallBodySchema = networkToolCallActionBodySchema;
 var toolCallResponseSchema = z$1.object({
   fullStream: z$1.any()
   // ReadableStream
@@ -3413,14 +3427,38 @@ var agentIdQuerySchema = z$1.object({
 var optionalAgentIdQuerySchema = z$1.object({
   agentId: z$1.string().optional()
 });
-var storageOrderBySchema = z$1.object({
-  field: z$1.enum(["createdAt", "updatedAt"]).optional(),
-  direction: z$1.enum(["ASC", "DESC"]).optional()
-});
-var messageOrderBySchema = z$1.object({
-  field: z$1.enum(["createdAt"]).optional(),
-  direction: z$1.enum(["ASC", "DESC"]).optional()
-});
+var storageOrderBySchema = z$1.preprocess(
+  (val) => {
+    if (typeof val === "string") {
+      try {
+        return JSON.parse(val);
+      } catch {
+        return void 0;
+      }
+    }
+    return val;
+  },
+  z$1.object({
+    field: z$1.enum(["createdAt", "updatedAt"]).optional(),
+    direction: z$1.enum(["ASC", "DESC"]).optional()
+  }).optional()
+);
+var messageOrderBySchema = z$1.preprocess(
+  (val) => {
+    if (typeof val === "string") {
+      try {
+        return JSON.parse(val);
+      } catch {
+        return void 0;
+      }
+    }
+    return val;
+  },
+  z$1.object({
+    field: z$1.enum(["createdAt"]).optional(),
+    direction: z$1.enum(["ASC", "DESC"]).optional()
+  }).optional()
+);
 var includeSchema = z$1.preprocess(
   (val) => {
     if (typeof val === "string") {
@@ -3483,13 +3521,13 @@ var getMemoryConfigQuerySchema = agentIdQuerySchema;
 var listThreadsQuerySchema = createPagePaginationSchema(100).extend({
   agentId: z$1.string().optional(),
   resourceId: z$1.string(),
-  orderBy: storageOrderBySchema.optional()
+  orderBy: storageOrderBySchema
 });
 var getThreadByIdQuerySchema = optionalAgentIdQuerySchema;
 var listMessagesQuerySchema = createPagePaginationSchema(40).extend({
   agentId: z$1.string().optional(),
   resourceId: z$1.string().optional(),
-  orderBy: messageOrderBySchema.optional(),
+  orderBy: messageOrderBySchema,
   include: includeSchema,
   filter: filterSchema
 });
@@ -3502,13 +3540,13 @@ var getMemoryStatusNetworkQuerySchema = agentIdQuerySchema;
 var listThreadsNetworkQuerySchema = createPagePaginationSchema(100).extend({
   agentId: z$1.string().optional(),
   resourceId: z$1.string(),
-  orderBy: storageOrderBySchema.optional()
+  orderBy: storageOrderBySchema
 });
 var getThreadByIdNetworkQuerySchema = optionalAgentIdQuerySchema;
 var listMessagesNetworkQuerySchema = createPagePaginationSchema(40).extend({
   agentId: z$1.string().optional(),
   resourceId: z$1.string().optional(),
-  orderBy: messageOrderBySchema.optional(),
+  orderBy: messageOrderBySchema,
   include: includeSchema,
   filter: filterSchema
 });
@@ -3867,7 +3905,7 @@ var LIST_MESSAGES_ROUTE = createRoute({
           }
         }
       }
-      throw new HTTPException$2(400, { message: "Memory is not initialized" });
+      return { messages: [], uiMessages: [] };
     } catch (error) {
       return handleError$1(error, "Error getting messages");
     }
@@ -32508,15 +32546,102 @@ ${template.content !== this.defaultWorkingMemoryTemplate ? `- Only store informa
     return {};
   }
   /**
-   * Updates the metadata of a list of messages
-   * @param messages - The list of messages to update
+   * Updates a list of messages and syncs the vector database for semantic recall.
+   * When message content is updated, the corresponding vector embeddings are also updated
+   * to ensure semantic recall stays in sync with the message content.
+   *
+   * @param messages - The list of messages to update (must include id, can include partial content)
+   * @param memoryConfig - Optional memory configuration to determine if semantic recall is enabled
    * @returns The list of updated messages
    */
   async updateMessages({
-    messages
+    messages,
+    memoryConfig
   }) {
     if (messages.length === 0) return [];
     const memoryStore = await this.getMemoryStore();
+    const config = this.getMergedThreadConfig(memoryConfig);
+    if (this.vector && config.semanticRecall) {
+      const messagesWithContent = messages.filter((m) => m.content !== void 0);
+      if (messagesWithContent.length > 0) {
+        const existingMessagesResult = await memoryStore.listMessagesById({
+          messageIds: messagesWithContent.map((m) => m.id)
+        });
+        const existingMessagesMap = new Map(existingMessagesResult.messages.map((m) => [m.id, m]));
+        const embeddingData = [];
+        let dimension;
+        const messageIdsWithNewEmbeddings = /* @__PURE__ */ new Set();
+        const messageIdsWithClearedContent = /* @__PURE__ */ new Set();
+        await Promise.all(
+          messagesWithContent.map(async (message) => {
+            const existingMessage = existingMessagesMap.get(message.id);
+            if (!existingMessage) return;
+            let textForEmbedding = null;
+            const content = message.content;
+            if (content) {
+              if ("content" in content && content.content && typeof content.content === "string" && content.content.trim() !== "") {
+                textForEmbedding = content.content;
+              } else if ("parts" in content && content.parts && Array.isArray(content.parts) && content.parts.length > 0) {
+                const joined = content.parts.filter((part) => part?.type === "text").map((part) => part.text).join(" ").trim();
+                if (joined) textForEmbedding = joined;
+              }
+            }
+            if (textForEmbedding) {
+              const result = await this.embedMessageContent(textForEmbedding);
+              dimension = result.dimension;
+              embeddingData.push({
+                embeddings: result.embeddings,
+                metadata: result.chunks.map(() => ({
+                  message_id: message.id,
+                  thread_id: existingMessage.threadId,
+                  resource_id: existingMessage.resourceId
+                }))
+              });
+              messageIdsWithNewEmbeddings.add(message.id);
+            } else {
+              messageIdsWithClearedContent.add(message.id);
+            }
+          })
+        );
+        const messageIdsNeedingDeletion = /* @__PURE__ */ new Set([...messageIdsWithClearedContent, ...messageIdsWithNewEmbeddings]);
+        if (messageIdsNeedingDeletion.size > 0) {
+          try {
+            const indexes = await this.vector.listIndexes();
+            const memoryIndexes = indexes.filter((name21) => name21.startsWith("memory_messages"));
+            for (const indexName of memoryIndexes) {
+              for (const messageId of messageIdsNeedingDeletion) {
+                try {
+                  await this.vector.deleteVectors({
+                    indexName,
+                    filter: { message_id: messageId }
+                  });
+                } catch {
+                  this.logger.debug(
+                    `No existing vectors found for message ${messageId} in ${indexName}, skipping delete`
+                  );
+                }
+              }
+            }
+          } catch {
+            this.logger.debug(`No memory indexes found to delete from`);
+          }
+        }
+        if (embeddingData.length > 0 && dimension !== void 0) {
+          const { indexName } = await this.createEmbeddingIndex(dimension, config);
+          const allVectors = [];
+          const allMetadata = [];
+          for (const data of embeddingData) {
+            allVectors.push(...data.embeddings);
+            allMetadata.push(...data.metadata);
+          }
+          await this.vector.upsert({
+            indexName,
+            vectors: allVectors,
+            metadata: allMetadata
+          });
+        }
+      }
+    }
     return memoryStore.updateMessages({ messages });
   }
   /**
@@ -36033,10 +36158,6 @@ ${additionalInstructions}`;
     });
     return super.streamLegacy(messages, enhancedOptions);
   };
-  /**
-   * Enhanced stream method with AgentBuilder-specific configuration
-   * Overrides the base Agent stream method to provide additional project context
-   */
   async stream(messages, streamOptions) {
     const { ...baseOptions } = streamOptions || {};
     const originalInstructions = await this.getInstructions({ requestContext: streamOptions?.requestContext });
@@ -43637,7 +43758,9 @@ var OBSERVE_STREAM_LEGACY_AGENT_BUILDER_ACTION_ROUTE = createRoute({
 // src/server/handlers/agents.ts
 var agents_exports = {};
 __export(agents_exports, {
+  APPROVE_NETWORK_TOOL_CALL_ROUTE: () => APPROVE_NETWORK_TOOL_CALL_ROUTE,
   APPROVE_TOOL_CALL_ROUTE: () => APPROVE_TOOL_CALL_ROUTE,
+  DECLINE_NETWORK_TOOL_CALL_ROUTE: () => DECLINE_NETWORK_TOOL_CALL_ROUTE,
   DECLINE_TOOL_CALL_ROUTE: () => DECLINE_TOOL_CALL_ROUTE,
   ENHANCE_INSTRUCTIONS_ROUTE: () => ENHANCE_INSTRUCTIONS_ROUTE,
   GENERATE_AGENT_ROUTE: () => GENERATE_AGENT_ROUTE,
@@ -44013,7 +44136,7 @@ var GENERATE_LEGACY_ROUTE = createRoute({
   path: "/api/agents/:agentId/generate-legacy",
   responseType: "json",
   pathParamSchema: agentIdPathParams,
-  bodySchema: agentExecutionBodySchema$1,
+  bodySchema: agentExecutionLegacyBodySchema,
   responseSchema: generateResponseSchema,
   summary: "[DEPRECATED] Generate with legacy format",
   description: "Legacy endpoint for generating agent responses. Use /api/agents/:agentId/generate instead.",
@@ -44045,7 +44168,7 @@ var STREAM_GENERATE_LEGACY_ROUTE = createRoute({
   path: "/api/agents/:agentId/stream-legacy",
   responseType: "datastream-response",
   pathParamSchema: agentIdPathParams,
-  bodySchema: agentExecutionBodySchema$1,
+  bodySchema: agentExecutionLegacyBodySchema,
   responseSchema: streamResponseSchema,
   summary: "[DEPRECATED] Stream with legacy format",
   description: "Legacy endpoint for streaming agent responses. Use /api/agents/:agentId/stream instead.",
@@ -44235,7 +44358,7 @@ var STREAM_NETWORK_ROUTE = createRoute({
   responseType: "stream",
   streamFormat: "sse",
   pathParamSchema: agentIdPathParams,
-  bodySchema: agentExecutionBodySchema$1.extend({ thread: z.string().optional() }),
+  bodySchema: agentExecutionBodySchema$1,
   responseSchema: streamResponseSchema,
   summary: "Stream agent network",
   description: "Executes an agent network with multiple agents and streams the response",
@@ -44246,16 +44369,65 @@ var STREAM_NETWORK_ROUTE = createRoute({
       sanitizeBody(params, ["tools"]);
       validateBody({ messages });
       const streamResult = await agent.network(messages, {
-        ...params,
-        memory: {
-          thread: params.thread ?? params.threadId ?? "",
-          resource: params.resourceId ?? "",
-          options: params.memory?.options ?? {}
-        }
+        ...params
       });
       return streamResult;
     } catch (error) {
       return handleError$1(error, "error streaming agent loop response");
+    }
+  }
+});
+var APPROVE_NETWORK_TOOL_CALL_ROUTE = createRoute({
+  method: "POST",
+  path: "/api/agents/:agentId/approve-network-tool-call",
+  responseType: "stream",
+  streamFormat: "sse",
+  pathParamSchema: agentIdPathParams,
+  bodySchema: approveNetworkToolCallBodySchema,
+  responseSchema: streamResponseSchema,
+  summary: "Approve network tool call",
+  description: "Approves a pending network tool call and continues network agent execution",
+  tags: ["Agents", "Tools"],
+  handler: async ({ mastra, agentId, ...params }) => {
+    try {
+      const agent = await getAgentFromSystem({ mastra, agentId });
+      if (!params.runId) {
+        throw new HTTPException$2(400, { message: "Run id is required" });
+      }
+      sanitizeBody(params, ["tools"]);
+      const streamResult = await agent.approveNetworkToolCall({
+        ...params
+      });
+      return streamResult;
+    } catch (error) {
+      return handleError$1(error, "error approving network tool call");
+    }
+  }
+});
+var DECLINE_NETWORK_TOOL_CALL_ROUTE = createRoute({
+  method: "POST",
+  path: "/api/agents/:agentId/decline-network-tool-call",
+  responseType: "stream",
+  streamFormat: "sse",
+  pathParamSchema: agentIdPathParams,
+  bodySchema: declineNetworkToolCallBodySchema,
+  responseSchema: streamResponseSchema,
+  summary: "Decline network tool call",
+  description: "Declines a pending network tool call and continues network agent execution without executing the tool",
+  tags: ["Agents", "Tools"],
+  handler: async ({ mastra, agentId, ...params }) => {
+    try {
+      const agent = await getAgentFromSystem({ mastra, agentId });
+      if (!params.runId) {
+        throw new HTTPException$2(400, { message: "Run id is required" });
+      }
+      sanitizeBody(params, ["tools"]);
+      const streamResult = await agent.declineNetworkToolCall({
+        ...params
+      });
+      return streamResult;
+    } catch (error) {
+      return handleError$1(error, "error declining network tool call");
     }
   }
 });
@@ -44567,6 +44739,8 @@ var AGENTS_ROUTES = [
   EXECUTE_AGENT_TOOL_ROUTE,
   APPROVE_TOOL_CALL_ROUTE,
   DECLINE_TOOL_CALL_ROUTE,
+  APPROVE_NETWORK_TOOL_CALL_ROUTE,
+  DECLINE_NETWORK_TOOL_CALL_ROUTE,
   // ============================================================================
   // Network Routes
   // ============================================================================
@@ -50932,7 +51106,7 @@ var getStudioPath = () => {
     const __filename = fileURLToPath(import.meta.url);
     __dirname = dirname(__filename);
   }
-  const studioPath = process.env.MASTRA_STUDIO_PATH || join(__dirname, "playground");
+  const studioPath = process.env.MASTRA_STUDIO_PATH || join(__dirname, "studio");
   return studioPath;
 };
 function getToolExports(tools) {
@@ -51083,7 +51257,7 @@ async function createHonoServer(mastra, options = {
   }
   const serverOptions = mastra.getServer();
   const studioBasePath = normalizeStudioBase(serverOptions?.studioBase ?? "/");
-  if (options?.playground) {
+  if (options?.studio) {
     app.get(
       `${studioBasePath}/refresh-events`,
       describeRoute({
@@ -51136,8 +51310,8 @@ async function createHonoServer(mastra, options = {
     if (requestPath.includes(".") && !requestPath.endsWith(".html")) {
       return await next();
     }
-    const isPlaygroundRoute = studioBasePath === "" || requestPath === studioBasePath || requestPath.startsWith(`${studioBasePath}/`);
-    if (options?.playground && isPlaygroundRoute) {
+    const isStudioRoute = studioBasePath === "" || requestPath === studioBasePath || requestPath.startsWith(`${studioBasePath}/`);
+    if (options?.studio && isStudioRoute) {
       const studioPath = getStudioPath();
       let indexHtml = await readFile(join(studioPath, "index.html"), "utf-8");
       const port = serverOptions?.port ?? (Number(process.env.PORT) || 4111);
@@ -51146,22 +51320,24 @@ async function createHonoServer(mastra, options = {
       const key = serverOptions?.https?.key ?? (process.env.MASTRA_HTTPS_KEY ? Buffer.from(process.env.MASTRA_HTTPS_KEY, "base64") : void 0);
       const cert = serverOptions?.https?.cert ?? (process.env.MASTRA_HTTPS_CERT ? Buffer.from(process.env.MASTRA_HTTPS_CERT, "base64") : void 0);
       const protocol = key && cert ? "https" : "http";
+      const cloudApiEndpoint = process.env.MASTRA_CLOUD_API_ENDPOINT || "";
       indexHtml = indexHtml.replace(`'%%MASTRA_SERVER_HOST%%'`, `'${host}'`);
       indexHtml = indexHtml.replace(`'%%MASTRA_SERVER_PORT%%'`, `'${port}'`);
       indexHtml = indexHtml.replace(`'%%MASTRA_HIDE_CLOUD_CTA%%'`, `'${hideCloudCta}'`);
       indexHtml = indexHtml.replace(`'%%MASTRA_SERVER_PROTOCOL%%'`, `'${protocol}'`);
+      indexHtml = indexHtml.replace(`'%%MASTRA_CLOUD_API_ENDPOINT%%'`, `'${cloudApiEndpoint}'`);
       indexHtml = indexHtml.replaceAll("%%MASTRA_STUDIO_BASE_PATH%%", studioBasePath);
       return c.newResponse(indexHtml, 200, { "Content-Type": "text/html" });
     }
     return c.newResponse(html2, 200, { "Content-Type": "text/html" });
   });
-  if (options?.playground) {
-    const studioPath = getStudioPath();
-    const playgroundPath = studioBasePath ? `${studioBasePath}/*` : "*";
+  if (options?.studio) {
+    const studioRootPath = getStudioPath();
+    const studioPath = studioBasePath ? `${studioBasePath}/*` : "*";
     app.use(
-      playgroundPath,
+      studioPath,
       serveStatic({
-        root: studioPath,
+        root: studioRootPath,
         rewriteRequestPath: (path) => {
           if (studioBasePath && path.startsWith(studioBasePath)) {
             return path.slice(studioBasePath.length);
@@ -51198,7 +51374,7 @@ async function createNodeServer(mastra, options = { tools: {} }) {
     () => {
       const logger2 = mastra.getLogger();
       logger2.info(` Mastra API running on ${protocol}://${host}:${port}/api`);
-      if (options?.playground) {
+      if (options?.studio) {
         const studioBasePath = normalizeStudioBase(serverOptions?.studioBase ?? "/");
         const studioUrl = `${protocol}://${host}:${port}${studioBasePath}`;
         logger2.info(`\u{1F468}\u200D\u{1F4BB} Studio available at ${studioUrl}`);
@@ -51219,7 +51395,7 @@ async function createNodeServer(mastra, options = { tools: {} }) {
 // @ts-ignore
 // @ts-ignore
 await createNodeServer(mastra, {
-  playground: true,
+  studio: true,
   isDev: true,
   tools: getToolExports(tools),
 });
@@ -51229,9 +51405,9 @@ if (mastra.getStorage()) {
 }
 
 var distEDO7GEGI = /*#__PURE__*/Object.freeze({
-  __proto__: null,
-  createOpenAI: createOpenAI,
-  openai: openai
+	__proto__: null,
+	createOpenAI: createOpenAI,
+	openai: openai
 });
 
 export { InvalidResponseDataError as I, NoSuchModelError as N, TooManyEmbeddingValuesForCallError as T, UnsupportedFunctionalityError as U, __commonJS as _, __require2 as a, __commonJS$2 as b, require_token_error$2 as c, __require2$2 as d, combineHeaders$1 as e, resolve$1 as f, postJsonToApi$1 as g, createJsonResponseHandler$1 as h, createEventSourceResponseHandler$1 as i, convertUint8ArrayToBase64 as j, createJsonErrorResponseHandler$1 as k, loadApiKey as l, generateId as m, isParsableJson as n, convertBase64ToUint8Array as o, parseProviderOptions as p, postFormDataToApi as q, require_token_error as r, __commonJS$1 as s, require_token_error$1 as t, __require22 as u, withoutTrailingSlash$1 as w };

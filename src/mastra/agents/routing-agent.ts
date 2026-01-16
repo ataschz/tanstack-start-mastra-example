@@ -1,19 +1,12 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
-import { LibSQLStore } from '@mastra/libsql';
-import { weatherAgent } from './weather-agent';
+import { memory } from '../memory';
 import { destinationsAgent } from './destinations-agent';
-
-// Storage para la memoria del agente (conversaciones)
-const agentStorage = new LibSQLStore({
-  id: 'routing-agent-memory',
-  url: 'file:./mastra.db',
-});
+import { weatherAgent } from './weather-agent';
 
 export const routingAgent = new Agent({
-  id: 'routing-agent',
-  name: 'Travel Assistant',
-  instructions: `
+	id: 'routing-agent',
+	name: 'Travel Assistant',
+	instructions: `
       You are an intelligent travel assistant that coordinates a network of specialized agents
       to help users plan their perfect trips.
       
@@ -52,12 +45,10 @@ export const routingAgent = new Agent({
       Always be friendly, enthusiastic about travel, and help the user
       make the best decision for their next adventure.
 `,
-  model: 'google/gemini-2.5-flash',
-  agents: {
-    weatherAgent,
-    destinationsAgent,
-  },
-  memory: new Memory({
-    storage: agentStorage,
-  }),
+	model: 'google/gemini-2.5-flash',
+	agents: {
+		weatherAgent,
+		destinationsAgent,
+	},
+	memory,
 });
