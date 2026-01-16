@@ -8,6 +8,7 @@ import type { ToolUIPart } from "ai";
 import { DefaultChatTransport } from "ai";
 import { CopyIcon, GlobeIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
 	Conversation,
 	ConversationContent,
@@ -85,6 +86,8 @@ function ChatPage() {
 
 	const { messages, sendMessage, status, setMessages } = useChat({
 		id: threadId,
+		// @ts-expect-error experimental_generateId is not in stable types yet
+		experimental_generateId: () => uuidv4(), // Generate UUIDs for message IDs
 		transport: new DefaultChatTransport({
 			api: `${MASTRA_BASE_URL}/chat`,
 			body: {

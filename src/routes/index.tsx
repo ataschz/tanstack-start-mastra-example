@@ -3,8 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { DefaultChatTransport } from "ai";
 import { GlobeIcon } from "lucide-react";
-import { nanoid } from "nanoid";
 import { useCallback, useMemo, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
 	Conversation,
 	ConversationContent,
@@ -52,11 +52,13 @@ function HomePage() {
 	const queryClient = useQueryClient();
 	const [inputValue, setInputValue] = useState("");
 
-	// Generar threadId una sola vez para esta sesión
-	const threadId = useMemo(() => nanoid(), []);
+	// Generate unique threadId for this session using UUID
+	const threadId = useMemo(() => uuidv4(), []);
 
 	const { messages, sendMessage, status } = useChat({
 		id: threadId,
+		// @ts-expect-error experimental_generateId is not in stable types yet
+		experimental_generateId: () => uuidv4(), // Generate UUIDs for message IDs
 		transport: new DefaultChatTransport({
 			api: `${MASTRA_BASE_URL}/chat`,
 			body: {
