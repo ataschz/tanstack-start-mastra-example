@@ -151,9 +151,7 @@ function ChatPage() {
 				// Invalidar threads para actualizar la lista en sidebar
 				invalidateThreads(0); // Sin delay, el thread ya existe
 			} else {
-				console.warn(
-					'⚠️ Stream ended but only 1 message, possible error - skipping invalidation'
-				);
+				console.warn('⚠️ Stream ended but only 1 message, possible error - skipping invalidation');
 			}
 		}
 

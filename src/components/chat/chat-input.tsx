@@ -52,7 +52,7 @@ export function ChatInput({
 	return (
 		<div className={cn(status === 'streaming' && 'streaming-border')}>
 			<form onSubmit={onSubmit}>
-				<PromptInput onSubmit={() => { }}>
+				<PromptInput onSubmit={() => {}}>
 					<PromptInputBody>
 						<PromptInputTextarea
 							onChange={(e) => onChange(e.target.value)}
@@ -81,15 +81,15 @@ export function ChatInput({
 							</PromptInputButton>
 						</PromptInputTools>
 
-						<PromptInputSubmit 
-							disabled={disabled} 
-							status={status}
+						<PromptInputSubmit
+							disabled={disabled}
 							onClick={(e) => {
 								if (status === 'streaming' && onStop) {
 									e.preventDefault();
 									onStop();
 								}
 							}}
+							status={status}
 						/>
 					</PromptInputFooter>
 				</PromptInput>

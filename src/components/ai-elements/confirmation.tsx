@@ -1,10 +1,10 @@
 'use client';
 
+import type { ToolUIPart } from 'ai';
+import { type ComponentProps, createContext, type ReactNode, useContext } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { ToolUIPart } from 'ai';
-import { type ComponentProps, createContext, type ReactNode, useContext } from 'react';
 
 type ToolUIPartApproval =
 	| {

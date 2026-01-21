@@ -1,21 +1,21 @@
 'use client';
 
 import type { NetworkDataPart } from '@mastra/ai-sdk';
+import {
+	BrainIcon,
+	CheckCircleIcon,
+	ChevronDownIcon,
+	CircleIcon,
+	ClockIcon,
+	NetworkIcon,
+	XCircleIcon,
+} from 'lucide-react';
+import type { ComponentProps, ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import {
-	ChevronDownIcon,
-	NetworkIcon,
-	CheckCircleIcon,
-	ClockIcon,
-	XCircleIcon,
-	CircleIcon,
-	BrainIcon,
-} from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
-import { Loader } from './loader';
 import { CodeBlock } from './code-block';
+import { Loader } from './loader';
 
 type NetworkData = NetworkDataPart['data'];
 type StepResult = NetworkData['steps'][number];
@@ -79,9 +79,9 @@ export const NetworkExecution = ({
 				<div className="border-t p-4 space-y-3">
 					{data.steps.map((step, index) => (
 						<NetworkStep
+							isLast={index === data.steps.length - 1}
 							key={step.id || index}
 							step={step}
-							isLast={index === data.steps.length - 1}
 						/>
 					))}
 				</div>
@@ -136,10 +136,10 @@ const NetworkStep = ({ step, isLast }: NetworkStepProps) => {
 							</div>
 							<p className="text-sm text-foreground">{step.task.reason}</p>
 							<div className="flex gap-2 mt-2">
-								<Badge variant="outline" className="text-xs">
+								<Badge className="text-xs" variant="outline">
 									Target: {step.task.id}
 								</Badge>
-								<Badge variant="outline" className="text-xs">
+								<Badge className="text-xs" variant="outline">
 									Type: {step.task.type}
 								</Badge>
 							</div>
@@ -149,9 +149,9 @@ const NetworkStep = ({ step, isLast }: NetworkStepProps) => {
 					{/* Expandable details */}
 					{(step.input || step.output) && (
 						<button
-							type="button"
-							onClick={() => setIsExpanded(!isExpanded)}
 							className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+							onClick={() => setIsExpanded(!isExpanded)}
+							type="button"
 						>
 							<ChevronDownIcon
 								className={cn('size-3 transition-transform', isExpanded && 'rotate-180')}

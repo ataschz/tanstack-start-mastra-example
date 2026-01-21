@@ -1,6 +1,5 @@
 'use client';
 
-import { cn } from '@/lib/utils';
 import {
 	type RiveParameters,
 	useRive,
@@ -11,6 +10,7 @@ import {
 } from '@rive-app/react-webgl2';
 import type { FC, ReactNode } from 'react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 
 export type PersonaState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'asleep';
 

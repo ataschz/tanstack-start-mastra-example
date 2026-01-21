@@ -124,9 +124,9 @@ export function ChatHistory({
 											<p className="text-xs text-muted-foreground">
 												{thread.createdAt
 													? formatDistanceToNow(new Date(thread.createdAt), {
-														addSuffix: true,
-														locale: es,
-													})
+															addSuffix: true,
+															locale: es,
+														})
 													: ''}
 											</p>
 										</div>

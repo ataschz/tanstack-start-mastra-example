@@ -45,7 +45,6 @@ export const webSearchTool = createTool({
 	},
 });
 
-
 function extractDomainFromUrl(url: string): string {
 	try {
 		const urlObj = new URL(url);

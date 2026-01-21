@@ -93,10 +93,10 @@ export function filterDisplayableMessages(messages: UIMessage[]): UIMessage[] {
 	// Tool-based dynamic-tools (like web-search) have their response in a separate text message
 	const deduplicatedMessages: UIMessage[] = [];
 	let i = 0;
-	
+
 	while (i < filteredMessages.length) {
 		const currentMessage = filteredMessages[i];
-		
+
 		// If it's an assistant message with dynamic-tool
 		if (
 			currentMessage.role === 'assistant' &&
@@ -104,29 +104,31 @@ export function filterDisplayableMessages(messages: UIMessage[]): UIMessage[] {
 		) {
 			// Check if this is an AGENT-based dynamic-tool (has childMessages with text result)
 			// Tool-based dynamic-tools don't have childMessages, so we shouldn't deduplicate
-			const dynamicToolPart = currentMessage.parts.find((p) => p.type === 'dynamic-tool') as {
-				type: 'dynamic-tool';
-				output?: {
-					childMessages?: Array<{ type: string; content?: string }>;
-					result?: string;
-				};
-			} | undefined;
-			
+			const dynamicToolPart = currentMessage.parts.find((p) => p.type === 'dynamic-tool') as
+				| {
+						type: 'dynamic-tool';
+						output?: {
+							childMessages?: Array<{ type: string; content?: string }>;
+							result?: string;
+						};
+				  }
+				| undefined;
+
 			const isAgentNetwork = dynamicToolPart?.output?.childMessages?.some(
 				(child) => child.type === 'text' && child.content
 			);
-			
+
 			if (isAgentNetwork) {
 				// For agent networks, skip consecutive assistant messages (they're duplicates)
 				let lastRelevantIndex = i;
-				
+
 				while (lastRelevantIndex + 1 < filteredMessages.length) {
 					const nextMessage = filteredMessages[lastRelevantIndex + 1];
-					
+
 					if (nextMessage.role === 'assistant') {
 						const hasDynamicTool = nextMessage.parts.some((p) => p.type === 'dynamic-tool');
 						const hasOnlyText = nextMessage.parts.every((p) => p.type === 'text');
-						
+
 						if (hasDynamicTool || hasOnlyText) {
 							lastRelevantIndex++;
 							continue;
@@ -134,7 +136,7 @@ export function filterDisplayableMessages(messages: UIMessage[]): UIMessage[] {
 					}
 					break;
 				}
-				
+
 				deduplicatedMessages.push(currentMessage);
 				i = lastRelevantIndex + 1;
 			} else {

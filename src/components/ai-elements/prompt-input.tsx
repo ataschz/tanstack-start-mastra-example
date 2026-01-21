@@ -136,7 +136,7 @@ export function PromptInputProvider({
 	// ----- attachments state (global when wrapped)
 	const [attachmentFiles, setAttachmentFiles] = useState<(FileUIPart & { id: string })[]>([]);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
-	const openRef = useRef<() => void>(() => { });
+	const openRef = useRef<() => void>(() => {});
 
 	const add = useCallback((files: File[] | FileList) => {
 		const incoming = Array.from(files);
@@ -669,9 +669,9 @@ export const PromptInput = ({
 		const text = usingProvider
 			? controller.textInput.value
 			: (() => {
-				const formData = new FormData(form);
-				return (formData.get('message') as string) || '';
-			})();
+					const formData = new FormData(form);
+					return (formData.get('message') as string) || '';
+				})();
 
 		// Reset form immediately after capturing text to avoid race condition
 		// where user input during async blob conversion would be lost
@@ -682,7 +682,7 @@ export const PromptInput = ({
 		// Convert blob URLs to data URLs asynchronously
 		Promise.all(
 			files.map(async ({ id, ...item }) => {
-				if (item.url && item.url.startsWith('blob:')) {
+				if (item.url?.startsWith('blob:')) {
 					const dataUrl = await convertBlobUrlToDataUrl(item.url);
 					// If conversion failed, keep the original blob URL
 					return {
@@ -834,15 +834,15 @@ export const PromptInputTextarea = ({
 
 	const controlledProps = controller
 		? {
-			value: controller.textInput.value,
-			onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
-				controller.textInput.setInput(e.currentTarget.value);
-				onChange?.(e);
-			},
-		}
+				value: controller.textInput.value,
+				onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
+					controller.textInput.setInput(e.currentTarget.value);
+					onChange?.(e);
+				},
+			}
 		: {
-			onChange,
-		};
+				onChange,
+			};
 
 	return (
 		<InputGroupTextarea

@@ -56,7 +56,7 @@ interface ChildMessage {
 /**
  * Resolves initial messages from memory, transforming network execution data
  * from JSON stringified format to dynamic-tool parts.
- * 
+ *
  * This function is copied from @mastra/react internal implementation.
  */
 export const resolveInitialMessages = (messages: UIMessage[]): UIMessage[] => {
@@ -116,9 +116,7 @@ export const resolveInitialMessages = (messages: UIMessage[]): UIMessage[] => {
 										toolCallId: toolCallContent.toolCallId,
 										toolName: toolCallContent.toolName,
 										args: toolCallContent.args,
-										toolOutput: isWorkflow
-											? toolResult?.result?.result
-											: toolResult?.result,
+										toolOutput: isWorkflow ? toolResult?.result?.result : toolResult?.result,
 									});
 								}
 							}
@@ -141,16 +139,18 @@ export const resolveInitialMessages = (messages: UIMessage[]): UIMessage[] => {
 						result: string;
 					};
 					if (primitiveType === 'tool') {
-						const toolResult = finalResult?.result as {
-							text?: string;
-							sources?: Array<{
-								url: string;
-								title?: string;
-								description?: string;
-								lastUpdated?: string;
-							}>;
-						} | undefined;
-						
+						const toolResult = finalResult?.result as
+							| {
+									text?: string;
+									sources?: Array<{
+										url: string;
+										title?: string;
+										description?: string;
+										lastUpdated?: string;
+									}>;
+							  }
+							| undefined;
+
 						// Create childMessages structure for tool results
 						result = {
 							childMessages: [
