@@ -2,6 +2,9 @@ import { perplexity } from '@ai-sdk/perplexity';
 import { createTool } from '@mastra/core/tools';
 import { generateText } from 'ai';
 import { z } from 'zod';
+import { useDevTools } from '../utils/dev-tools';
+
+const baseModel = perplexity('sonar');
 
 export const webSearchTool = createTool({
 	id: 'web-search',
@@ -25,7 +28,7 @@ export const webSearchTool = createTool({
 	}),
 	execute: async ({ query }) => {
 		const result = await generateText({
-			model: perplexity('sonar'),
+			model: useDevTools(baseModel),
 			prompt: query,
 		});
 

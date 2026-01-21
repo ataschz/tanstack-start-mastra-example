@@ -332,6 +332,31 @@ bun run check     # Lint + format
   * Perplexity Sonar (web search)
 * **Database:** SQLite (via @mastra/libsql)
 
+## 🔧 Development Tools
+
+### AI SDK DevTools
+
+Para debugging de interacciones LLM durante desarrollo:
+
+1. **Instalación:** `bun add -d @ai-sdk/devtools`
+2. **Uso:** Ejecutar `bun dev` para iniciar la app y DevTools automáticamente
+3. **Visualizar:** Abrir [http://localhost:4983](http://localhost:4983) para inspeccionar llamadas AI SDK
+
+**DevTools captura automáticamente:**
+- ✅ Todas las llamadas `generateText` y `streamText`
+- ✅ Prompts enviados a modelos
+- ✅ Respuestas recibidas
+- ✅ Invocaciones de tools
+- ✅ Interacciones multi-step (routing de agentes, network execution)
+- ✅ Token usage y timing
+
+**Nota:** DevTools almacena datos localmente en el directorio `.devtools/` (gitignored). Solo está activo en modo desarrollo.
+
+**Deshabilitar DevTools:** Si necesitas deshabilitar DevTools temporalmente, usa:
+```bash
+AI_SDK_DEVTOOLS_ENABLED=false bun dev
+```
+
 ## Learn More
 
 * [Mastra Documentation](https://mastra.ai/docs)

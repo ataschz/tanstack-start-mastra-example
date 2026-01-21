@@ -2,14 +2,17 @@ import { google } from '@ai-sdk/google';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory';
 import { weatherTool } from '../tools/weather-tool';
+import { useDevTools } from '../utils/dev-tools';
+
+const baseModel = google('gemini-2.5-flash');
 
 export const weatherAgent = new Agent({
-	id: 'weather-agent',
-	name: 'Weather Agent',
-	description: `This agent provides accurate weather information for any location.
+    id: 'weather-agent',
+    name: 'Weather Agent',
+    description: `This agent provides accurate weather information for any location.
     It uses real-time data to report on temperature, humidity, wind, and weather conditions.
     Use it when the user asks about weather, atmospheric conditions, or meteorological data for a city or place.`,
-	instructions: `
+    instructions: `
       You are a helpful weather assistant that provides accurate weather information and can help planning activities based on the weather.
 
       Your primary function is to help users get weather details for specific locations. When responding:
@@ -22,8 +25,8 @@ export const weatherAgent = new Agent({
       - If the user asks for activities, respond in the format they request.
 
       Use the weatherTool to fetch current weather data.
-`,
-	model: google('gemini-2.5-flash'),
-	tools: { weatherTool },
-	memory,
+  `,
+    model: useDevTools(baseModel),
+    tools: { weatherTool },
+    memory,
 });

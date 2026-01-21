@@ -4,6 +4,9 @@ import { memory } from '../memory';
 import { webSearchTool } from '../tools/web-search-tool';
 import { destinationsAgent } from './destinations-agent';
 import { weatherAgent } from './weather-agent';
+import { useDevTools } from '../utils/dev-tools';
+
+const baseModel = google('gemini-3-flash-preview');
 
 export const routingAgent = new Agent({
 	id: 'routing-agent',
@@ -79,7 +82,7 @@ Always be friendly, enthusiastic about travel, and help the user
 make the best decision for their next adventure.
 `;
 	},
-	model: google('gemini-3-flash-preview'),
+	model: useDevTools(baseModel),
 	tools: ({ requestContext }) => {
 		const webSearchEnabled = requestContext?.get('webSearchEnabled');
 		// Solo incluir webSearchTool si está habilitado

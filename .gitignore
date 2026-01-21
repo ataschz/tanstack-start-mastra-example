@@ -16,3 +16,4 @@ todos.json
 *.db-wal
 *.db-journal
 .mastra
+.devtools
